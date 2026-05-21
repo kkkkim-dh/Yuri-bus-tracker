@@ -309,10 +309,125 @@
       opacity: 1;
       pointer-events: auto;
     }
+    
+    /* 유튜브 LP 뮤직 플레이어 (Option A) */
+    .yt-player-container {
+      position: absolute;
+      top: 80px;
+      right: 20px;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    
+    .lp-cover {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      border: 3px solid #111;
+      overflow: hidden;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      position: relative;
+      background: #000;
+      transition: transform 0.2s;
+      flex-shrink: 0;
+    }
+    
+    .lp-cover:hover {
+      transform: scale(1.05);
+    }
+    
+    .lp-cover::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 18px;
+      height: 18px;
+      background: #111;
+      border-radius: 50%;
+      border: 1px solid #333;
+    }
+    
+    .lp-image {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    
+    .lp-cover.spinning {
+      animation: spin 4s linear infinite;
+    }
+    
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+    
+    .player-controls {
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(8px);
+      border-radius: 20px;
+      padding: 6px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      opacity: 0;
+      transform: translateX(20px);
+      pointer-events: none;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    .player-controls.visible {
+      opacity: 1;
+      transform: translateX(0);
+      pointer-events: auto;
+    }
+    
+    .song-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #1f2937;
+      max-width: 150px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    
+    .btn-player {
+      background: none;
+      border: none;
+      color: #4b5563;
+      cursor: pointer;
+      font-size: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 4px;
+      transition: color 0.2s;
+    }
+    
+    .btn-player:hover { color: #111; }
   </style>
 </head>
 <body>
+  <!-- 숨겨진 유튜브 IFrame API 컨테이너 (display:none 이면 초기화가 안될 수 있으므로 투명하게 처리) -->
+  <div id="ytplayer" style="position:absolute; width:1px; height:1px; opacity:0; pointer-events:none;"></div>
+
   <div class="app-container">
+    <!-- 유튜브 LP 플레이어 UI -->
+    <div class="yt-player-container">
+      <div class="lp-cover" id="lpCover" onclick="togglePlayerControls()">
+        <img src="https://img.youtube.com/vi/0KBtBd7BPvU/hqdefault.jpg" alt="Album Cover" class="lp-image" id="lpImage">
+      </div>
+      <div class="player-controls" id="playerControls">
+        <div class="song-title" id="songTitle">KIDO - I told you</div>
+        <button class="btn-player" id="btnPlayPause" onclick="togglePlay()">▶</button>
+        <button class="btn-player" onclick="nextTrack()">⏭</button>
+      </div>
+    </div>
+
     <header>
       <div class="header-content">
         <h1 id="top-title">653번 버스 실시간 안내</h1>
@@ -356,7 +471,114 @@
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
+  <!-- YouTube IFrame API -->
+  <script src="https://www.youtube.com/iframe_api"></script>
+
   <script>
+    // [유튜브 배경음악 플레이어 설정]
+    const PLAYLIST_VIDEOS = [
+      { id: '0KBtBd7BPvU', title: 'KIDO - I told you' },
+      { id: 'ewKey4CQRdk', title: 'KIDO - 꼬르륵 (Grr)' }
+    ];
+    let ytPlayer;
+    let isPlaying = false;
+    let currentVideoIndex = 0;
+
+    function onYouTubeIframeAPIReady() {
+      ytPlayer = new YT.Player('ytplayer', {
+        height: '1',
+        width: '1',
+        playerVars: {
+          'autoplay': 0,
+          'controls': 0,
+          'disablekb': 1,
+          'fs': 0,
+          'rel': 0,
+          'modestbranding': 1
+        },
+        events: {
+          'onReady': onPlayerReady,
+          'onStateChange': onPlayerStateChange,
+          'onError': onPlayerError
+        }
+      });
+    }
+
+    function onPlayerReady(event) {
+      // 자동 재생 정책 우회를 위해 loadPlaylist를 사용합니다
+      ytPlayer.loadPlaylist({
+        playlist: PLAYLIST_VIDEOS.map(v => v.id)
+      });
+      ytPlayer.setLoop(true); // 무한 반복 설정
+      ytPlayer.setVolume(100); // 볼륨 명시적 설정
+      
+      // 혹시라도 브라우저 정책 때문에 자동 재생이 막혔을 경우 플레이 강제 시도
+      setTimeout(() => {
+        if (!isPlaying && ytPlayer.playVideo) ytPlayer.playVideo();
+      }, 1000);
+      
+      // 사용자가 화면 어디든 처음 터치/클릭하면 자동으로 음악이 시작되게 합니다.
+      const startPlayOnInteraction = () => {
+        if (!isPlaying && ytPlayer && ytPlayer.playVideo) {
+          ytPlayer.playVideo();
+          document.removeEventListener('click', startPlayOnInteraction);
+          document.removeEventListener('touchstart', startPlayOnInteraction);
+        }
+      };
+      document.addEventListener('click', startPlayOnInteraction, { once: true });
+      document.addEventListener('touchstart', startPlayOnInteraction, { once: true });
+    }
+
+    function onPlayerStateChange(event) {
+      const btnPlayPause = document.getElementById('btnPlayPause');
+      const lpCover = document.getElementById('lpCover');
+      const lpImage = document.getElementById('lpImage');
+      const songTitle = document.getElementById('songTitle');
+
+      if (event.data === YT.PlayerState.PLAYING) {
+        isPlaying = true;
+        btnPlayPause.innerText = '⏸';
+        lpCover.classList.add('spinning');
+        
+        // 현재 재생 중인 트랙 정보 업데이트
+        currentVideoIndex = ytPlayer.getPlaylistIndex();
+        if(PLAYLIST_VIDEOS[currentVideoIndex]) {
+          songTitle.innerText = PLAYLIST_VIDEOS[currentVideoIndex].title;
+          lpImage.src = `https://img.youtube.com/vi/${PLAYLIST_VIDEOS[currentVideoIndex].id}/hqdefault.jpg`;
+        }
+      } else if (event.data === YT.PlayerState.PAUSED || event.data === YT.PlayerState.ENDED) {
+        isPlaying = false;
+        btnPlayPause.innerText = '▶';
+        lpCover.classList.remove('spinning');
+      }
+    }
+
+    function onPlayerError(event) {
+      console.error("YouTube Player Error:", event.data);
+      if (event.data === 101 || event.data === 150) {
+        alert("이 유튜브 영상은 외부 웹사이트(현재 앱)에서 재생할 수 없도록 설정되어 있습니다. 다른 영상을 사용해주세요.");
+      }
+    }
+
+    function togglePlay() {
+      if (!ytPlayer || !ytPlayer.playVideo) return;
+      if (isPlaying) {
+        ytPlayer.pauseVideo();
+      } else {
+        ytPlayer.playVideo();
+      }
+    }
+
+    function nextTrack() {
+      if (!ytPlayer || !ytPlayer.nextVideo) return;
+      ytPlayer.nextVideo();
+    }
+
+    function togglePlayerControls() {
+      const controls = document.getElementById('playerControls');
+      controls.classList.toggle('visible');
+    }
+
     // [실제 공공데이터 연동 설정 (서울시 API)]
     const API_ENDPOINT = 'http://ws.bus.go.kr/api/rest/arrive/getArrInfoByRouteAll';
     const SERVICE_KEY = 'ed7ae213f2cd131037a52906d82659fe97bc98ad16c1662be7f9672c0e7e6172';
