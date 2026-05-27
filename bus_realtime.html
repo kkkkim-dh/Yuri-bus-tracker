@@ -4,378 +4,422 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>실시간 버스 위치 안내</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap');
-    @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
     :root {
-      --bg-color: #f8fafc; --panel-bg: rgba(255,255,255,0.95);
-      --primary: #3b82f6; --text-main: #1f2937; --text-muted: #6b7280;
-      --green: #10b981; --red: #ef4444; --yellow: #fbbf24; --gray: #9ca3af;
+      --bg:#f8fafc; --panel:rgba(255,255,255,0.95); --primary:#3b82f6;
+      --txt:#1f2937; --muted:#6b7280; --green:#10b981; --red:#ef4444;
     }
-    * { box-sizing: border-box; font-family: 'Pretendard','Outfit',-apple-system,sans-serif; }
-    body { margin:0; padding:0; background:#e2e8f0; display:flex; justify-content:center; align-items:center; min-height:100vh; color:var(--text-main); }
-    .app-container { width:100%; max-width:400px; height:800px; max-height:100vh; background:var(--bg-color); position:relative; border-radius:24px; overflow:hidden; box-shadow:0 25px 50px -12px rgba(0,0,0,0.15); display:flex; flex-direction:column; }
-    header { padding:24px 20px 16px; background:linear-gradient(180deg,rgba(255,255,255,0.9) 0%,rgba(255,255,255,0) 100%); position:absolute; top:0; left:0; right:0; z-index:1000; pointer-events:none; }
-    .header-content { pointer-events:auto; }
-    h1 { font-size:22px; font-weight:700; text-align:center; margin:0; color:#1f2937; text-shadow:2px 2px 4px rgba(255,255,255,0.8); }
-    #map { flex:1; width:100%; height:100%; background:#e5e5e5; z-index:1; }
-    .leaflet-control-attribution { display:none; }
-    .custom-leaflet-icon, .station-label-icon { background:transparent; border:none; }
-    .station-label { font-weight:700; color:#1f2937; text-shadow:2px 2px 0 white,-2px -2px 0 white,2px -2px 0 white,-2px 2px 0 white; text-align:center; width:max-content; font-size:14px; line-height:1.3; }
-    .station-label .highlight.up { color:#2563eb; border:1px solid #2563eb; }
-    .station-label .highlight.down { color:#ea580c; border:1px solid #ea580c; }
-    .station-label .highlight { font-size:14px; background:rgba(255,255,255,0.95); padding:2px 6px; border-radius:6px; display:inline-block; margin-bottom:4px; box-shadow:0 2px 4px rgba(0,0,0,0.1); }
-    .marker { display:flex; flex-direction:column; align-items:center; transition:all 0.3s cubic-bezier(0.4,0,0.2,1); }
-    .marker-tooltip { background:white; color:var(--text-main); padding:6px 12px; border-radius:20px; font-weight:700; font-size:14px; margin-bottom:6px; box-shadow:0 4px 12px rgba(0,0,0,0.15); position:relative; transition:all 0.3s ease; white-space:nowrap; z-index:2; }
-    .marker-tooltip::after { content:''; position:absolute; bottom:-6px; left:50%; transform:translateX(-50%); border-width:6px 6px 0; border-style:solid; border-color:white transparent transparent transparent; }
-    .marker-tooltip.danger { background:var(--red); color:white; animation:pulse 1.5s infinite; }
-    .marker-tooltip.danger::after { border-color:var(--red) transparent transparent transparent; }
-    @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(239,68,68,0.4)} 70%{box-shadow:0 0 0 12px rgba(239,68,68,0)} 100%{box-shadow:0 0 0 0 rgba(239,68,68,0)} }
-    .marker.shift-up { transform:translateY(-25px); }
-    .marker.shift-down { transform:translateY(25px); }
-    .marker svg { width:44px; height:55px; filter:drop-shadow(0 6px 8px rgba(0,0,0,0.3)); transition:transform 0.3s cubic-bezier(0.34,1.56,0.64,1); z-index:1; }
-    footer { position:absolute; bottom:0; left:0; right:0; padding:24px 20px; background:linear-gradient(0deg,rgba(255,255,255,0.9) 60%,rgba(255,255,255,0) 100%); z-index:1000; pointer-events:none; }
-    .info-box { background:var(--panel-bg); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px); border:1px solid rgba(0,0,0,0.05); border-radius:20px; padding:20px; text-align:center; box-shadow:0 10px 30px rgba(0,0,0,0.1); pointer-events:auto; }
-    .station-info { font-size:15px; color:var(--text-muted); margin-bottom:12px; font-weight:500; }
-    .time-info { display:flex; align-items:center; justify-content:space-around; background:#f1f5f9; padding:12px; border-radius:12px; margin-bottom:16px; }
-    .time-block { display:flex; flex-direction:column; align-items:center; gap:4px; }
-    .time-block .label { font-size:13px; font-weight:600; color:var(--text-muted); }
-    .time-block .value { font-size:24px; font-weight:700; color:var(--text-main); }
-    .time-block .value.danger { color:var(--red); }
-    .sim-control { border-top:1px dashed #e2e8f0; padding-top:12px; }
-    .pulse-dot { display:inline-block; width:10px; height:10px; background:var(--green); border-radius:50%; animation:pulse-dot 1.5s infinite; }
-    @keyframes pulse-dot { 0%{transform:scale(1);opacity:1;box-shadow:0 0 0 0 rgba(16,185,129,0.4)} 70%{transform:scale(1);opacity:1;box-shadow:0 0 0 6px rgba(16,185,129,0)} 100%{transform:scale(1);opacity:1;box-shadow:0 0 0 0 rgba(16,185,129,0)} }
-    .btn-refresh { background:white; color:var(--text-main); border:1px solid #d1d5db; padding:6px 12px; border-radius:8px; cursor:pointer; font-family:'Pretendard',sans-serif; font-size:13px; font-weight:600; transition:all 0.2s; }
-    .btn-refresh:hover { background:#f3f4f6; }
-    .loading-overlay { position:absolute; top:0;left:0;right:0;bottom:0; background:rgba(255,255,255,0.7); z-index:2000; display:flex; justify-content:center; align-items:center; font-weight:700; color:var(--primary); backdrop-filter:blur(4px); pointer-events:none; opacity:0; transition:opacity 0.3s; }
-    .loading-overlay.active { opacity:1; pointer-events:auto; }
-    .yt-player-container { position:absolute; top:80px; right:20px; z-index:1000; display:flex; align-items:center; gap:12px; }
-    .lp-cover { width:80px; height:80px; border-radius:50%; border:3px solid #111; overflow:hidden; cursor:pointer; box-shadow:0 4px 12px rgba(0,0,0,0.3); position:relative; background:#000; transition:transform 0.2s; flex-shrink:0; }
-    .lp-cover:hover { transform:scale(1.05); }
-    .lp-cover::after { content:''; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:18px; height:18px; background:#111; border-radius:50%; border:1px solid #333; }
-    .lp-image { width:100%; height:100%; object-fit:cover; }
-    .lp-cover.spinning { animation:spin 4s linear infinite; }
-    @keyframes spin { 100%{transform:rotate(360deg)} }
-    .player-controls { background:rgba(255,255,255,0.9); backdrop-filter:blur(8px); border-radius:20px; padding:6px 16px; display:flex; align-items:center; gap:12px; box-shadow:0 4px 12px rgba(0,0,0,0.15); opacity:0; transform:translateX(20px); pointer-events:none; transition:all 0.3s cubic-bezier(0.4,0,0.2,1); }
-    .player-controls.visible { opacity:1; transform:translateX(0); pointer-events:auto; }
-    .song-title { font-size:15px; font-weight:700; color:#1f2937; max-width:150px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .btn-player { background:none; border:none; color:#4b5563; cursor:pointer; font-size:20px; display:flex; align-items:center; justify-content:center; padding:4px; transition:color 0.2s; }
-    .btn-player:hover { color:#111; }
+    *{box-sizing:border-box;font-family:'Outfit',-apple-system,sans-serif;margin:0;padding:0}
+    body{background:#e2e8f0;display:flex;justify-content:center;align-items:center;min-height:100vh}
+    .app{width:100%;max-width:400px;height:800px;max-height:100vh;background:var(--bg);position:relative;border-radius:24px;overflow:hidden;box-shadow:0 25px 50px -12px rgba(0,0,0,.15);display:flex;flex-direction:column}
+    /* Header */
+    header{padding:24px 20px 16px;background:linear-gradient(180deg,rgba(255,255,255,.9),rgba(255,255,255,0));position:absolute;top:0;left:0;right:0;z-index:1000;pointer-events:none;text-align:center}
+    h1{font-size:22px;font-weight:700;color:#1f2937;text-shadow:2px 2px 4px rgba(255,255,255,.8)}
+    /* Map */
+    #map{flex:1;width:100%;height:100%;z-index:1}
+    .leaflet-control-attribution{display:none}
+    /* Footer */
+    footer{position:absolute;bottom:0;left:0;right:0;padding:16px 16px 20px;background:linear-gradient(0deg,rgba(255,255,255,.95) 70%,rgba(255,255,255,0));z-index:1000;pointer-events:none}
+    .info-box{background:var(--panel);backdrop-filter:blur(16px);border:1px solid rgba(0,0,0,.05);border-radius:20px;padding:16px 18px;box-shadow:0 10px 30px rgba(0,0,0,.1);pointer-events:auto}
+    .info-label{font-size:14px;color:var(--muted);font-weight:500;text-align:center;margin-bottom:10px}
+    .time-row{display:flex;justify-content:space-around;background:#f1f5f9;border-radius:12px;padding:12px 8px;margin-bottom:12px;gap:8px}
+    .time-block{display:flex;flex-direction:column;align-items:center;gap:4px;flex:1}
+    .time-block .lbl{font-size:11px;font-weight:600;color:var(--muted);text-align:center;line-height:1.4}
+    .time-block .val{font-size:26px;font-weight:800;color:var(--txt);transition:color .3s}
+    .time-block .val.green{color:var(--green)}
+    .time-block .val.red{color:var(--red)}
+    .time-block .sub{font-size:11px;color:var(--muted);font-weight:500}
+    .divider{width:1px;background:#e2e8f0;align-self:stretch}
+    .footer-ctrl{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted);font-weight:500}
+    .pulse-dot{display:inline-block;width:8px;height:8px;background:var(--green);border-radius:50%;margin-right:6px;animation:pdot 1.5s infinite}
+    @keyframes pdot{0%,100%{box-shadow:0 0 0 0 rgba(16,185,129,.5)}70%{box-shadow:0 0 0 5px rgba(16,185,129,0)}}
+    .btn-rf{background:#fff;color:var(--txt);border:1px solid #d1d5db;padding:5px 12px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;transition:background .2s}
+    .btn-rf:hover{background:#f3f4f6}
+    /* Loading */
+    .loading{position:absolute;inset:0;background:rgba(255,255,255,.75);z-index:3000;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:12px;backdrop-filter:blur(4px);opacity:0;pointer-events:none;transition:opacity .3s}
+    .loading.on{opacity:1;pointer-events:auto}
+    .spin{width:36px;height:36px;border:4px solid #e2e8f0;border-top-color:var(--primary);border-radius:50%;animation:spin .8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .loading p{font-size:14px;font-weight:600;color:var(--primary)}
+    /* LP Player */
+    .yt-wrap{position:absolute;top:80px;right:16px;z-index:1001;display:flex;align-items:center;gap:10px}
+    .lp{width:72px;height:72px;border-radius:50%;border:3px solid #111;overflow:hidden;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.3);position:relative;background:#000;flex-shrink:0}
+    .lp::after{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:16px;height:16px;background:#111;border-radius:50%;border:1px solid #333;z-index:2}
+    .lp img{width:100%;height:100%;object-fit:cover}
+    .lp.spin-lp{animation:lpspin 4s linear infinite}
+    @keyframes lpspin{to{transform:rotate(360deg)}}
+    .player-ctrl{background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-radius:20px;padding:6px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 4px 12px rgba(0,0,0,.15);opacity:0;transform:translateX(16px);pointer-events:none;transition:all .3s}
+    .player-ctrl.show{opacity:1;transform:translateX(0);pointer-events:auto}
+    .song-nm{font-size:13px;font-weight:700;color:#1f2937;max-width:130px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .btn-p{background:none;border:none;color:#4b5563;cursor:pointer;font-size:18px;padding:4px;transition:color .2s}
+    .btn-p:hover{color:#111}
+    /* Map markers */
+    .custom-icon,.stn-icon{background:transparent!important;border:none!important}
+    .stn-label{font-weight:700;font-size:13px;color:#1f2937;text-align:center;width:max-content;text-shadow:1px 1px 0 #fff,-1px -1px 0 #fff,1px -1px 0 #fff,-1px 1px 0 #fff;line-height:1.4}
+    .stn-label .badge{display:inline-block;padding:2px 7px;border-radius:6px;font-size:12px;background:rgba(255,255,255,.95);box-shadow:0 1px 4px rgba(0,0,0,.12);margin-bottom:3px}
+    .badge.up{color:#2563eb;border:1px solid #2563eb}
+    .badge.dn{color:#ea580c;border:1px solid #ea580c}
+    .bus-marker{display:flex;flex-direction:column;align-items:center}
+    .bus-bubble{padding:5px 11px;border-radius:20px;font-weight:800;font-size:13px;margin-bottom:5px;box-shadow:0 3px 10px rgba(0,0,0,.15);white-space:nowrap;position:relative}
+    .bus-bubble::after{content:'';position:absolute;bottom:-5px;left:50%;transform:translateX(-50%);border:5px solid transparent;border-top-color:inherit}
+    .bus-bubble.grn{background:var(--green);color:#fff;border-top-color:var(--green)}
+    .bus-bubble.grn::after{border-top-color:var(--green)}
+    .bus-bubble.red{background:var(--red);color:#fff;animation:bpulse 1.5s infinite}
+    .bus-bubble.red::after{border-top-color:var(--red)}
+    @keyframes bpulse{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.4)}70%{box-shadow:0 0 0 10px rgba(239,68,68,0)}}
+    /* Demo banner */
+    #demo-banner{position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(90deg,#f59e0b,#ef4444);color:#fff;text-align:center;padding:7px 16px;font-size:12px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,.25)}
   </style>
 </head>
 <body>
-  <div id="ytplayer" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;"></div>
-  <div class="app-container">
-    <div class="yt-player-container">
-      <div class="lp-cover" id="lpCover" onclick="togglePlayerControls()">
-        <img src="https://img.youtube.com/vi/0KBtBd7BPvU/hqdefault.jpg" alt="Album Cover" class="lp-image" id="lpImage">
-      </div>
-      <div class="player-controls" id="playerControls">
-        <div class="song-title" id="songTitle">KIDO - 꼬르륵 (Grr)</div>
-        <button class="btn-player" id="btnPlayPause" onclick="togglePlay()">▶</button>
-        <button class="btn-player" onclick="nextTrack()">⏭</button>
-      </div>
+<div id="ytplayer" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"></div>
+
+<div class="app">
+  <!-- LP Player -->
+  <div class="yt-wrap">
+    <div class="lp" id="lp" onclick="toggleCtrl()">
+      <img id="lpImg" src="https://img.youtube.com/vi/0KBtBd7BPvU/hqdefault.jpg" alt="cover">
     </div>
-    <header>
-      <div class="header-content">
-        <h1 id="top-title">653번 버스 실시간 안내</h1>
-      </div>
-    </header>
-    <div id="map"></div>
-    <div id="loading" class="loading-overlay">실시간 데이터를 불러오는 중...</div>
-    <footer>
-      <div class="info-box">
-        <div class="station-info">탑승할 정류장 실시간 버스 대기시간</div>
-        <div class="time-info">
-          <div class="time-block">
-            <span class="label" style="text-align:center;">출근할때 타는곳<br>(강서한방병원)</span>
-            <div class="value" id="time-gangseo">- 분</div>
-          </div>
-          <div class="time-block">
-            <span class="label" style="text-align:center;">퇴근할때 타는곳<br>(로옴코리아)</span>
-            <div class="value" id="time-gasan">- 분</div>
-          </div>
-        </div>
-        <div class="sim-control">
-          <div style="display:flex;justify-content:space-between;align-items:center;">
-            <div style="font-size:13px;color:var(--text-muted);display:flex;align-items:center;gap:8px;font-weight:500;">
-              <span class="pulse-dot"></span> 공공데이터 API 실시간 연동 중
-            </div>
-            <button onclick="fetchRealTimeData()" class="btn-refresh">🔄 새로고침</button>
-          </div>
-        </div>
-      </div>
-    </footer>
+    <div class="player-ctrl" id="pCtrl">
+      <span class="song-nm" id="songNm">KIDO - 꼬르륵</span>
+      <button class="btn-p" id="btnPP" onclick="togglePlay()">▶</button>
+      <button class="btn-p" onclick="nextTrack()">⏭</button>
+    </div>
   </div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-  <script src="https://www.youtube.com/iframe_api"></script>
-  <script>
-    // ── 유튜브 플레이어 ──────────────────────────────────────────────
-    const PLAYLIST_VIDEOS = [
-      { id: '0KBtBd7BPvU', title: 'KIDO - 꼬르륵 (Grr)' },
-      { id: 'ewKey4CQRdk', title: 'KIDO - I told you' }
-    ];
-    let ytPlayer, isPlaying = false, currentVideoIndex = 0;
+  <header><h1>653번 버스 실시간 안내</h1></header>
 
-    function onYouTubeIframeAPIReady() {
-      ytPlayer = new YT.Player('ytplayer', {
-        height: '1', width: '1',
-        playerVars: { autoplay: 0, controls: 0, disablekb: 1, fs: 0, rel: 0, modestbranding: 1 },
-        events: { onReady: onPlayerReady, onStateChange: onPlayerStateChange, onError: onPlayerError }
-      });
+  <div id="map"></div>
+
+  <div class="loading on" id="loading">
+    <div class="spin"></div>
+    <p id="loadTxt">지도 경로 불러오는 중…</p>
+  </div>
+
+  <footer>
+    <div class="info-box">
+      <div class="info-label">탑승 정류장 버스 도착 예정</div>
+      <div class="time-row">
+        <div class="time-block">
+          <span class="lbl">🏥 강서한방병원<br>(출근)</span>
+          <div class="val" id="t-up">— 분</div>
+          <div class="sub" id="s-up">다음 버스</div>
+        </div>
+        <div class="divider"></div>
+        <div class="time-block">
+          <span class="lbl">🏢 로옴코리아<br>(퇴근)</span>
+          <div class="val" id="t-dn">— 분</div>
+          <div class="sub" id="s-dn">다음 버스</div>
+        </div>
+      </div>
+      <div class="footer-ctrl">
+        <span><span class="pulse-dot"></span>실시간 API 연동 중</span>
+        <button class="btn-rf" onclick="fetchBus()">🔄 새로고침</button>
+      </div>
+    </div>
+  </footer>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="https://www.youtube.com/iframe_api"></script>
+<script>
+// ════════════════════════════════════════════════
+//  YouTube Player
+// ════════════════════════════════════════════════
+const TRACKS = [
+  { id:'0KBtBd7BPvU', title:'KIDO - 꼬르륵 (Grr)' },
+  { id:'ewKey4CQRdk', title:'KIDO - I told you' }
+];
+let ytP, playing=false;
+function onYouTubeIframeAPIReady(){
+  ytP = new YT.Player('ytplayer',{
+    height:'1',width:'1',
+    playerVars:{autoplay:0,controls:0,disablekb:1,fs:0,rel:0,modestbranding:1},
+    events:{onReady:e=>{
+      ytP.loadPlaylist({playlist:TRACKS.map(t=>t.id)});
+      ytP.setLoop(true); ytP.setVolume(100);
+      setTimeout(()=>{ if(!playing) ytP.playVideo(); },800);
+      const go=()=>{ if(!playing&&ytP.playVideo) ytP.playVideo(); };
+      document.addEventListener('click',go,{once:true});
+      document.addEventListener('touchstart',go,{once:true});
+    },
+    onStateChange:e=>{
+      const btn=document.getElementById('btnPP'), lp=document.getElementById('lp');
+      const img=document.getElementById('lpImg'), nm=document.getElementById('songNm');
+      if(e.data===YT.PlayerState.PLAYING){
+        playing=true; btn.innerText='⏸'; lp.classList.add('spin-lp');
+        const idx=ytP.getPlaylistIndex();
+        if(TRACKS[idx]){ nm.innerText=TRACKS[idx].title; img.src=`https://img.youtube.com/vi/${TRACKS[idx].id}/hqdefault.jpg`; }
+      } else { playing=false; btn.innerText='▶'; lp.classList.remove('spin-lp'); }
+    },
+    onError:e=>console.warn('YT err',e.data)
+  }});
+}
+function togglePlay(){ if(!ytP) return; playing ? ytP.pauseVideo() : ytP.playVideo(); }
+function nextTrack(){ if(ytP&&ytP.nextVideo) ytP.nextVideo(); }
+function toggleCtrl(){ document.getElementById('pCtrl').classList.toggle('show'); }
+
+// ════════════════════════════════════════════════
+//  Config
+// ════════════════════════════════════════════════
+const SERVICE_KEY = '556f51685a656f64333561785a7054';
+const BUS_ROUTE_ID = '100100098';          // 653번 노선 ID
+const ARS_UP   = '16328';                  // 강서한방병원 ARS ID
+const ARS_DN   = '18109';                  // 로옴코리아 ARS ID
+const COORD_UP = [37.5301, 126.8390];      // 강서한방병원 좌표
+const COORD_DN = [37.4795, 126.8800];      // 로옴코리아 좌표
+
+// CORS 우회 프록시 목록 (순서대로 시도)
+const PROXIES = [
+  u => `https://corsproxy.io/?${encodeURIComponent(u)}`,
+  u => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`
+];
+
+let routeCoords=[], idxUp=0, idxDn=0;
+let busMarkers={}, demoMode=true;
+let busDataList=[];
+const DEMO_SECS = 1800;
+
+// ════════════════════════════════════════════════
+//  Map init
+// ════════════════════════════════════════════════
+const map = L.map('map',{zoomControl:false}).setView(COORD_UP,13);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{maxZoom:19}).addTo(map);
+
+let polyFull = L.polyline([COORD_UP,COORD_DN],{color:'#cbd5e1',weight:5,opacity:.6}).addTo(map);
+let polyUp   = L.polyline([COORD_UP,COORD_DN],{color:'#3b82f6',weight:6,opacity:.9,dashArray:'1,1'}).addTo(map);
+let polyDn   = L.polyline([COORD_UP,COORD_DN],{color:'#f97316',weight:6,opacity:.9,dashArray:'1,1'}).addTo(map);
+
+function mkStnLabel(html, latlng, anchor){
+  return L.marker(latlng,{icon:L.divIcon({className:'stn-icon',html:`<div class="stn-label">${html}</div>`,iconAnchor:anchor})}).addTo(map);
+}
+mkStnLabel("<div class='badge up'>📍 출근 탑승</div><div>강서한방병원</div>",  COORD_UP, [50,-10]);
+mkStnLabel("<div class='badge dn'>📍 퇴근 탑승</div><div>로옴코리아</div>",    COORD_DN, [50, 40]);
+
+// ════════════════════════════════════════════════
+//  OSRM 실제 도로 경로
+// ════════════════════════════════════════════════
+async function loadOSRM(){
+  setLoad('지도에 실제 도로 경로를 그리는 중…');
+  try {
+    const url = 'https://router.project-osrm.org/route/v1/driving/126.8270,37.5510;126.8390,37.5301;126.8800,37.4795?geometries=geojson&overview=full';
+    const r = await fetch(url);
+    const d = await r.json();
+    const coords = d.routes[0].geometry.coordinates.map(c=>[c[1],c[0]]);
+    routeCoords = coords;
+
+    const closest = t => { let mi=Infinity,idx=0; coords.forEach((c,i)=>{ let d=Math.hypot(c[0]-t[0],c[1]-t[1]); if(d<mi){mi=d;idx=i;} }); return idx; };
+    idxUp = closest(COORD_UP);
+    idxDn = closest(COORD_DN);
+
+    // 전체 회색 선
+    polyFull.setLatLngs(coords);
+    // 상행 (강서한방병원까지) — 파란선
+    polyUp.setLatLngs(coords.slice(0, idxUp+1));
+    // 하행 (강서→가산) — 주황선
+    polyDn.setLatLngs(coords.slice(idxUp, idxDn+1));
+
+    map.fitBounds(L.latLngBounds(coords),{padding:[50,50]});
+    return true;
+  } catch(e) {
+    console.warn('OSRM 실패',e);
+    return false;
+  }
+}
+
+// ════════════════════════════════════════════════
+//  API 호출 (정류장 도착 예정 — getStationByUid)
+// ════════════════════════════════════════════════
+async function proxyFetch(rawUrl){
+  for(const p of PROXIES){
+    try {
+      const r = await fetch(p(rawUrl),{signal:AbortSignal.timeout(6000)});
+      if(!r.ok) continue;
+      const txt = await r.text();
+      // corsproxy.io 는 raw 반환, codetabs 도 raw 반환
+      return JSON.parse(txt);
+    } catch(e){ console.warn('proxy fail',e); }
+  }
+  throw new Error('모든 프록시 실패');
+}
+
+async function fetchArrival(arsId){
+  const url = `http://ws.bus.go.kr/api/rest/stationinfo/getStationByUid?ServiceKey=${SERVICE_KEY}&arsId=${arsId}&resultType=json`;
+  const data = await proxyFetch(url);
+  if(data.msgHeader?.headerCd !== '0') throw new Error(data.msgHeader?.headerMsg);
+  return data.msgBody?.itemList ?? [];
+}
+
+async function fetchBus(){
+  setLoad('실시간 버스 데이터 불러오는 중…');
+  try {
+    const [upItems, dnItems] = await Promise.all([
+      fetchArrival(ARS_UP),
+      fetchArrival(ARS_DN)
+    ]);
+
+    const newList = [];
+
+    // 강서한방병원 (상행 653번 필터)
+    const upBus = upItems.filter(i => i.busRouteId===BUS_ROUTE_ID || i.rtNm==='653');
+    upBus.forEach((item,idx) => {
+      const t1=parseInt(item.traTime1)||0, t2=parseInt(item.traTime2)||0;
+      if(t1>0) newList.push({id:`up_1_${idx}`, sec:t1, dir:'up',  stNm:item.stNm||'', veh:item.vehId1||''});
+      if(t2>0) newList.push({id:`up_2_${idx}`, sec:t2, dir:'up',  stNm:item.stNm||'', veh:item.vehId2||''});
+    });
+
+    // 로옴코리아 (하행 653번 필터)
+    const dnBus = dnItems.filter(i => i.busRouteId===BUS_ROUTE_ID || i.rtNm==='653');
+    dnBus.forEach((item,idx) => {
+      const t1=parseInt(item.traTime1)||0, t2=parseInt(item.traTime2)||0;
+      if(t1>0) newList.push({id:`dn_1_${idx}`, sec:t1, dir:'dn', stNm:item.stNm||'', veh:item.vehId1||''});
+      if(t2>0) newList.push({id:`dn_2_${idx}`, sec:t2, dir:'dn', stNm:item.stNm||'', veh:item.vehId2||''});
+    });
+
+    if(newList.length > 0){
+      busDataList = newList;
+      demoMode = false;
+      hideBanner();
+      console.log('✅ 실시간 연동 성공', newList);
+    } else {
+      showBanner('도착 정보 없음 — 데모 모드');
     }
-    function onPlayerReady(e) {
-      ytPlayer.loadPlaylist({ playlist: PLAYLIST_VIDEOS.map(v => v.id) });
-      ytPlayer.setLoop(true); ytPlayer.setVolume(100);
-      setTimeout(() => { if (!isPlaying && ytPlayer.playVideo) ytPlayer.playVideo(); }, 1000);
-      const start = () => {
-        if (!isPlaying && ytPlayer && ytPlayer.playVideo) {
-          ytPlayer.playVideo();
-          document.removeEventListener('click', start);
-          document.removeEventListener('touchstart', start);
-        }
-      };
-      document.addEventListener('click', start, { once: true });
-      document.addEventListener('touchstart', start, { once: true });
+  } catch(e){
+    console.error('❌ API 실패:', e);
+    showBanner('API 연결 실패 — 데모 모드');
+  } finally {
+    hideLoad();
+    renderAll();
+  }
+}
+
+// ════════════════════════════════════════════════
+//  지도 버스 마커 & UI 렌더
+// ════════════════════════════════════════════════
+function getPosByRatio(dir, ratio){
+  if(!routeCoords.length) return dir==='up' ? COORD_UP : COORD_DN;
+  const seg = dir==='up'
+    ? routeCoords.slice(0, idxUp+1)
+    : routeCoords.slice(idxUp, idxDn+1);
+  if(!seg.length) return dir==='up' ? COORD_UP : COORD_DN;
+  if(ratio<=0) return seg[0];
+  if(ratio>=1) return seg[seg.length-1];
+  let total=0, dists=[];
+  for(let i=0;i<seg.length-1;i++){
+    const d=Math.hypot(seg[i+1][0]-seg[i][0],seg[i+1][1]-seg[i][1]);
+    total+=d; dists.push(d);
+  }
+  let target=total*ratio, cur=0;
+  for(let i=0;i<seg.length-1;i++){
+    if(cur+dists[i]>=target){
+      const r=(target-cur)/dists[i];
+      return [seg[i][0]+(seg[i+1][0]-seg[i][0])*r, seg[i][1]+(seg[i+1][1]-seg[i][1])*r];
     }
-    function onPlayerStateChange(e) {
-      const btn = document.getElementById('btnPlayPause');
-      const lp  = document.getElementById('lpCover');
-      const img = document.getElementById('lpImage');
-      const ttl = document.getElementById('songTitle');
-      if (e.data === YT.PlayerState.PLAYING) {
-        isPlaying = true; btn.innerText = '⏸'; lp.classList.add('spinning');
-        currentVideoIndex = ytPlayer.getPlaylistIndex();
-        if (PLAYLIST_VIDEOS[currentVideoIndex]) {
-          ttl.innerText = PLAYLIST_VIDEOS[currentVideoIndex].title;
-          img.src = `https://img.youtube.com/vi/${PLAYLIST_VIDEOS[currentVideoIndex].id}/hqdefault.jpg`;
-        }
-      } else if (e.data === YT.PlayerState.PAUSED || e.data === YT.PlayerState.ENDED) {
-        isPlaying = false; btn.innerText = '▶'; lp.classList.remove('spinning');
-      }
-    }
-    function onPlayerError(e) {
-      console.error("YT Error:", e.data);
-      if (e.data === 101 || e.data === 150) alert("이 영상은 외부 재생이 차단되어 있습니다. 다른 영상을 사용해주세요.");
-    }
-    function togglePlay() {
-      if (!ytPlayer || !ytPlayer.playVideo) return;
-      isPlaying ? ytPlayer.pauseVideo() : ytPlayer.playVideo();
-    }
-    function nextTrack() { if (ytPlayer && ytPlayer.nextVideo) ytPlayer.nextVideo(); }
-    function togglePlayerControls() { document.getElementById('playerControls').classList.toggle('visible'); }
+    cur+=dists[i];
+  }
+  return seg[seg.length-1];
+}
 
-    // ── API 설정 ──────────────────────────────────────────────────────
-    // 서울시 버스 도착정보 API (getBusArrInfoByStId — 정류소 기반 도착정보)
-    const SERVICE_KEY = '556f51685a656f64333561785a7054';
-    // 정류장 ARS ID (강서한방병원: 상행 탑승, 로옴코리아: 하행 탑승)
-    const ARS_GANGSEO = '16328'; // 강서한방병원
-    const ARS_GASAN   = '18109'; // 로옴코리아
-    // 653번 노선 ID
-    const ROUTE_ID = '100100098';
+function renderAll(){
+  const active = busDataList.filter(b=>b.sec>=0);
+  const curIds = active.map(b=>b.id);
+  // 없어진 마커 제거
+  Object.keys(busMarkers).forEach(k=>{ if(!curIds.includes(k)){ map.removeLayer(busMarkers[k]); delete busMarkers[k]; }});
 
-    // ── 지도/경로 설정 ────────────────────────────────────────────────
-    const COORD_GANGSEO = [37.5301, 126.8390];
-    const COORD_GASAN   = [37.4795, 126.8800];
-    let PATH_WORK_APPROACH = [[37.5510, 126.8270], COORD_GANGSEO];
-    let PATH_COMMUTE_GANGSEO_TO_GASAN = [COORD_GANGSEO, COORD_GASAN];
-    let FULL_ROUTE = [...PATH_WORK_APPROACH, ...PATH_COMMUTE_GANGSEO_TO_GASAN];
-    const APPROACH_SECONDS = 1800;
+  // 각 방향 가장 빠른 버스
+  const fastUp = active.filter(b=>b.dir==='up').sort((a,b)=>a.sec-b.sec)[0];
+  const fastDn = active.filter(b=>b.dir==='dn').sort((a,b)=>a.sec-b.sec)[0];
 
-    let busDataList = [], mapMarkers = {};
+  // 하단 패널 업데이트
+  updatePanel('up', fastUp);
+  updatePanel('dn', fastDn);
 
-    const map = L.map('map', { zoomControl: false }).setView(COORD_GANGSEO, 13);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(map);
-    let mainPolyline = L.polyline(FULL_ROUTE, { color: '#fbbf24', weight: 6, opacity: 1, lineJoin: 'round' }).addTo(map);
-    map.fitBounds(L.latLngBounds(FULL_ROUTE), { padding: [50, 50] });
+  // 노선 색상 업데이트 (도착 임박 빨강, 여유 파랑/주황)
+  if(fastUp){ const m=Math.floor(fastUp.sec/60); polyUp.setStyle({color: m<=5?'#ef4444':'#3b82f6'}); }
+  if(fastDn){ const m=Math.floor(fastDn.sec/60); polyDn.setStyle({color: m<=5?'#ef4444':'#f97316'}); }
 
-    function createStationLabel(text, position, offset) {
-      const icon = L.divIcon({ className: 'station-label-icon', html: `<div class="station-label">${text}</div>`, iconAnchor: offset });
-      return L.marker(position, { icon }).addTo(map);
-    }
-    createStationLabel("<span class='highlight up'>📍 [출근 탑승]</span><br>강서한방병원", COORD_GANGSEO, [50, -20]);
-    createStationLabel("<span class='highlight down'>📍 [퇴근 탑승]</span><br>로옴코리아", COORD_GASAN, [50, 40]);
+  // 버스 마커
+  active.forEach(bus=>{
+    const mins  = Math.floor(bus.sec/60);
+    const isRed = mins<=5;
+    const ratio = Math.max(0.02, Math.min(0.98, 1 - bus.sec/DEMO_SECS));
+    const pos   = getPosByRatio(bus.dir, ratio);
+    const bubbleCls = isRed ? 'red' : 'grn';
+    const html = `<div class="bus-marker"><div class="bus-bubble ${bubbleCls}">${isRed?'🚨':''} ${mins}분</div>` +
+      `<svg width="38" height="48" viewBox="0 0 40 50" fill="none" xmlns="http://www.w3.org/2000/svg">` +
+      `<path d="M20 0C8.954 0 0 8.954 0 20C0 35 20 50 20 50S40 35 40 20C40 8.954 31.046 0 20 0Z" fill="${isRed?'#ef4444':bus.dir==='up'?'#3b82f6':'#f97316'}"/>` +
+      `<path d="M12 16h16v10H12zM14 27a2 2 0 100-4 2 2 0 000 4zm8 0a2 2 0 100-4 2 2 0 000 4z" fill="white"/></svg></div>`;
+    const icon = L.divIcon({className:'custom-icon', html, iconSize:[60,80], iconAnchor:[30,75]});
+    if(!busMarkers[bus.id]) busMarkers[bus.id]=L.marker(pos,{icon}).addTo(map);
+    else { busMarkers[bus.id].setLatLng(pos); busMarkers[bus.id].setIcon(icon); }
+  });
+}
 
-    const svgGreen = `<svg width="40" height="50" viewBox="0 0 40 50" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 0C8.954 0 0 8.954 0 20C0 35 20 50 20 50C20 50 40 35 40 20C40 8.954 31.046 0 20 0Z" fill="#10b981"/><circle cx="20" cy="20" r="14" fill="white" fill-opacity="0.2"/><path d="M12 16h16v10H12zM14 27a2 2 0 100-4 2 2 0 000 4zm8 0a2 2 0 100-4 2 2 0 000 4z" fill="white"/></svg>`;
-    const svgRed   = `<svg width="40" height="50" viewBox="0 0 40 50" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 0C8.954 0 0 8.954 0 20C0 35 20 50 20 50C20 50 40 35 40 20C40 8.954 31.046 0 20 0Z" fill="#ef4444"/><circle cx="20" cy="20" r="14" fill="white" fill-opacity="0.2"/><path d="M12 16h16v10H12zM14 27a2 2 0 100-4 2 2 0 000 4zm8 0a2 2 0 100-4 2 2 0 000 4z" fill="white"/></svg>`;
-    const svgGray  = `<svg width="40" height="50" viewBox="0 0 40 50" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 0C8.954 0 0 8.954 0 20C0 35 20 50 20 50C20 50 40 35 40 20C40 8.954 31.046 0 20 0Z" fill="#9ca3af"/><circle cx="20" cy="20" r="14" fill="white" fill-opacity="0.2"/><path d="M12 16h16v10H12zM14 27a2 2 0 100-4 2 2 0 000 4zm8 0a2 2 0 100-4 2 2 0 000 4z" fill="white"/></svg>`;
+function updatePanel(dir, bus){
+  const tEl = document.getElementById(dir==='up'?'t-up':'t-dn');
+  const sEl = document.getElementById(dir==='up'?'s-up':'s-dn');
+  if(bus){
+    const m = Math.max(0,Math.floor(bus.sec/60));
+    const s = bus.sec%60;
+    tEl.innerText = m > 0 ? `${m}분` : `${s}초`;
+    tEl.className = 'val ' + (m<=5 ? 'red' : 'green');
+    sEl.innerText = bus.stNm ? `현재: ${bus.stNm}` : (m<=5?'⚠️ 곧 도착':'정상 운행 중');
+  } else {
+    tEl.innerText='정보없음'; tEl.className='val'; sEl.innerText='운행 정보 없음';
+  }
+}
 
-    // ── 데모 배너 ──────────────────────────────────────────────────────
-    function showDemoBanner() {
-      if (document.getElementById('demo-banner')) return;
-      const banner = document.createElement('div');
-      banner.id = 'demo-banner';
-      banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(90deg,#f59e0b,#ef4444);color:#fff;text-align:center;padding:8px 16px;font-size:13px;font-weight:600;letter-spacing:0.3px;box-shadow:0 2px 8px rgba(0,0,0,0.25)';
-      const now = new Date(), syncTime = new Date(now.getTime() + 2 * 3600000);
-      const hh = String(syncTime.getHours()).padStart(2,'0'), mm = String(syncTime.getMinutes()).padStart(2,'0');
-      banner.innerHTML = `🚌 데모 모드 | API 동기화 예상 완료 시각 : 오늘 ${hh}:${mm} (최대 24시간 이내) &nbsp;<span style="opacity:.7;font-weight:400">— 실시간 연동 전까지 가상 운행을 표시합니다</span>`;
-      document.body.prepend(banner);
-    }
-    function hideDemoBanner() {
-      const b = document.getElementById('demo-banner');
-      if (b) b.remove();
-    }
+// ════════════════════════════════════════════════
+//  Demo buses
+// ════════════════════════════════════════════════
+function initDemo(){
+  busDataList = [
+    {id:'d_up1', sec:240,  dir:'up', stNm:'화곡역',   veh:'', _demo:true},
+    {id:'d_up2', sec:900,  dir:'up', stNm:'우장산역', veh:'', _demo:true},
+    {id:'d_dn1', sec:360,  dir:'dn', stNm:'가산디지털단지', veh:'', _demo:true},
+    {id:'d_dn2', sec:1200, dir:'dn', stNm:'남구로역', veh:'', _demo:true}
+  ];
+}
 
-    // ── 실시간 API 호출 (getBusArrInfoByStId) ─────────────────────────
-    // allorigins 프록시를 통해 CORS 우회
-    async function fetchArrival(arsId) {
-      const endpoint = `http://ws.bus.go.kr/api/rest/stationinfo/getStationByUid?ServiceKey=${SERVICE_KEY}&arsId=${arsId}&resultType=json`;
-      const proxied  = `https://api.allorigins.win/get?url=${encodeURIComponent(endpoint)}`;
-      const res  = await fetch(proxied);
-      const wrap = await res.json();
-      const data = JSON.parse(wrap.contents);
-      // 헤더 확인
-      if (data.msgHeader && data.msgHeader.headerCd !== '0') throw new Error(data.msgHeader.headerMsg);
-      return data.msgBody?.itemList ?? [];
-    }
+// 1초 카운트다운
+setInterval(()=>{
+  busDataList.forEach(b=>{
+    if(b.sec>0) b.sec--;
+    if(b._demo && b.sec<=0) b.sec=DEMO_SECS;
+  });
+  renderAll();
+},1000);
 
-    async function fetchRealTimeData() {
-      const loading = document.getElementById('loading');
-      loading.innerText = '실시간 데이터를 불러오는 중...';
-      loading.classList.add('active');
-      try {
-        const [gangseoItems, gasanItems] = await Promise.all([
-          fetchArrival(ARS_GANGSEO),
-          fetchArrival(ARS_GASAN)
-        ]);
+// 30초마다 API 재시도
+setInterval(fetchBus, 30000);
 
-        const newBusData = [];
+// ════════════════════════════════════════════════
+//  Banner & Loading helpers
+// ════════════════════════════════════════════════
+function showBanner(msg){
+  let b=document.getElementById('demo-banner');
+  if(!b){ b=document.createElement('div'); b.id='demo-banner'; document.body.prepend(b); }
+  const now=new Date(), s=new Date(now.getTime()+2*3600000);
+  const hh=String(s.getHours()).padStart(2,'0'), mm=String(s.getMinutes()).padStart(2,'0');
+  b.innerHTML=`🚌 데모 모드 | ${msg} — API 동기화 예상: ${hh}:${mm}`;
+}
+function hideBanner(){ const b=document.getElementById('demo-banner'); if(b) b.remove(); }
+function setLoad(t){ document.getElementById('loadTxt').innerText=t; document.getElementById('loading').classList.add('on'); }
+function hideLoad(){ document.getElementById('loading').classList.remove('on'); }
 
-        // 강서한방병원 정류장 — 653번 필터
-        gangseoItems.filter(i => i.busRouteId === ROUTE_ID || i.rtNm === '653').forEach((item, idx) => {
-          const t1 = parseInt(item.traTime1); const t2 = parseInt(item.traTime2);
-          if (t1 > 0) newBusData.push({ id: `up_${item.vehId1||idx}_1`, timeToBoarding: t1, direction: 'up' });
-          if (t2 > 0) newBusData.push({ id: `up_${item.vehId2||idx}_2`, timeToBoarding: t2, direction: 'up' });
-        });
-
-        // 로옴코리아 정류장 — 653번 필터
-        gasanItems.filter(i => i.busRouteId === ROUTE_ID || i.rtNm === '653').forEach((item, idx) => {
-          const t1 = parseInt(item.traTime1); const t2 = parseInt(item.traTime2);
-          if (t1 > 0) newBusData.push({ id: `down_${item.vehId1||idx}_1`, timeToBoarding: t1, direction: 'down' });
-          if (t2 > 0) newBusData.push({ id: `down_${item.vehId2||idx}_2`, timeToBoarding: t2, direction: 'down' });
-        });
-
-        if (newBusData.length > 0) {
-          busDataList = newBusData;
-          hideDemoBanner();
-          console.log('✅ 실시간 데이터 수신 완료:', newBusData);
-        } else {
-          console.warn('⚠️ 653번 도착 정보 없음 — 데모 유지');
-          showDemoBanner();
-        }
-      } catch (err) {
-        console.error('❌ API 호출 실패 — 데모 유지:', err);
-        showDemoBanner();
-      } finally {
-        loading.classList.remove('active');
-        updateUI();
-      }
-    }
-
-    // ── 지도 위치 보간 ─────────────────────────────────────────────────
-    function getCoordAlongPath(path, ratio) {
-      if (ratio <= 0) return path[0];
-      if (ratio >= 1) return path[path.length - 1];
-      let total = 0, dists = [];
-      for (let i = 0; i < path.length - 1; i++) {
-        let d = Math.hypot(path[i+1][0]-path[i][0], path[i+1][1]-path[i][1]);
-        total += d; dists.push(d);
-      }
-      let target = total * ratio, cur = 0;
-      for (let i = 0; i < path.length - 1; i++) {
-        if (cur + dists[i] >= target) {
-          let r = (target - cur) / dists[i];
-          return [path[i][0] + (path[i+1][0]-path[i][0])*r, path[i][1] + (path[i+1][1]-path[i][1])*r];
-        }
-        cur += dists[i];
-      }
-      return path[path.length - 1];
-    }
-
-    // ── UI 갱신 ───────────────────────────────────────────────────────
-    function updateUI() {
-      const active = busDataList.filter(b => b.timeToBoarding >= 0);
-      const curIds = active.map(b => b.id);
-      for (let k in mapMarkers) {
-        if (!curIds.includes(k)) { map.removeLayer(mapMarkers[k]); delete mapMarkers[k]; }
-      }
-
-      const closestUp   = active.filter(b => b.direction === 'up').sort((a,b)=>a.timeToBoarding-b.timeToBoarding)[0];
-      const closestDown = active.filter(b => b.direction === 'down').sort((a,b)=>a.timeToBoarding-b.timeToBoarding)[0];
-      const upEl   = document.getElementById('time-gangseo');
-      const downEl = document.getElementById('time-gasan');
-
-      if (closestUp)   { let m=Math.max(0,Math.floor(closestUp.timeToBoarding/60));   upEl.innerText=m+'분';   upEl.className=m<=5?'value danger':'value'; }
-      else             { upEl.innerText='정보 없음'; upEl.className='value'; }
-      if (closestDown) { let m=Math.max(0,Math.floor(closestDown.timeToBoarding/60)); downEl.innerText=m+'분'; downEl.className=m<=5?'value danger':'value'; }
-      else             { downEl.innerText='정보 없음'; downEl.className='value'; }
-
-      active.forEach(bus => {
-        const mins    = Math.floor(bus.timeToBoarding / 60);
-        const danger  = mins <= 5;
-        const ttText  = danger ? `🚨 ${mins}분` : `${mins}분`;
-        const svgIcon = danger ? svgRed : svgGreen;
-        const pathLine = bus.direction === 'up' ? PATH_WORK_APPROACH : PATH_COMMUTE_GANGSEO_TO_GASAN;
-        const ratio    = Math.max(0, 1 - (bus.timeToBoarding / APPROACH_SECONDS));
-        const pos      = getCoordAlongPath(pathLine, ratio);
-        const shift    = bus.direction === 'up' ? 'shift-down' : 'shift-up';
-        const html = `<div class="marker ${shift}">${bus.timeToBoarding>=0?`<div class="marker-tooltip ${danger?'danger':''}">${ttText}</div>`:''} ${bus.timeToBoarding<0?svgGray:svgIcon}</div>`;
-        const icon = L.divIcon({ className:'custom-leaflet-icon', html, iconSize:[60,90], iconAnchor:[30,80] });
-        if (!mapMarkers[bus.id]) mapMarkers[bus.id] = L.marker(pos, { icon }).addTo(map);
-        else { mapMarkers[bus.id].setLatLng(pos); mapMarkers[bus.id].setIcon(icon); }
-      });
-    }
-
-    // ── 데모 버스 ────────────────────────────────────────────────────
-    function initDemoBuses() {
-      busDataList = [
-        { id:'demo_up_1',   timeToBoarding:180,  direction:'up',   _demo:true },
-        { id:'demo_up_2',   timeToBoarding:780,  direction:'up',   _demo:true },
-        { id:'demo_down_1', timeToBoarding:300,  direction:'down', _demo:true },
-        { id:'demo_down_2', timeToBoarding:1100, direction:'down', _demo:true }
-      ];
-    }
-
-    // 1초마다 카운트다운
-    setInterval(() => {
-      busDataList.forEach(bus => {
-        if (bus.timeToBoarding > 0) bus.timeToBoarding -= 1;
-        if (bus._demo && bus.timeToBoarding <= 0) bus.timeToBoarding = APPROACH_SECONDS;
-      });
-      updateUI();
-    }, 1000);
-
-    // 30초마다 API 재시도
-    setInterval(fetchRealTimeData, 30000);
-
-    // ── 앱 초기화 ─────────────────────────────────────────────────────
-    async function initApp() {
-      const loading = document.getElementById('loading');
-      loading.innerText = '지도에 실제 도로 경로를 그리는 중...';
-      loading.classList.add('active');
-      try {
-        const osrm = 'https://router.project-osrm.org/route/v1/driving/126.8270,37.5510;126.8390,37.5301;126.8800,37.4795?geometries=geojson&overview=full';
-        const res  = await fetch(osrm);
-        const data = await res.json();
-        const coords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
-        const findIdx = target => { let minD=Infinity, minI=0; coords.forEach((ll,i)=>{ let d=Math.pow(ll[0]-target[0],2)+Math.pow(ll[1]-target[1],2); if(d<minD){minD=d;minI=i;} }); return minI; };
-        const iG = findIdx(COORD_GANGSEO), iS = findIdx(COORD_GASAN);
-        PATH_WORK_APPROACH = coords.slice(0, iG + 1);
-        PATH_COMMUTE_GANGSEO_TO_GASAN = coords.slice(iG, iS + 1);
-        FULL_ROUTE = coords;
-        mainPolyline.setLatLngs(FULL_ROUTE);
-        map.fitBounds(L.latLngBounds(FULL_ROUTE), { padding: [50, 50] });
-      } catch(e) { console.error('OSRM 실패:', e); }
-
-      initDemoBuses();
-      updateUI();
-      showDemoBanner();
-      fetchRealTimeData();
-    }
-
-    initApp();
-  </script>
+// ════════════════════════════════════════════════
+//  App start
+// ════════════════════════════════════════════════
+async function init(){
+  await loadOSRM();
+  initDemo();
+  showBanner('데모 버스 표시 중');
+  renderAll();
+  await fetchBus();
+}
+init();
+</script>
 </body>
 </html>
