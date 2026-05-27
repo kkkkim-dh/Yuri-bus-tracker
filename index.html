@@ -580,9 +580,11 @@
     }
 
     // [실제 공공데이터 연동 설정 (서울시 API)]
-    const API_ENDPOINT = 'http://ws.bus.go.kr/api/rest/arrive/getArrInfoByRouteAll';
+    // 1. 활용가이드 기준 정확한 최신 API 도메인으로 변경
+    const API_ENDPOINT = 'http://openapi.seoul.go.kr:8088/api/rest/arrive/getArrInfoByRouteAll';
+    // 2. 발급받으신 인증키
     const SERVICE_KEY = 'ed7ae213f2cd131037a52906d82659fe97bc98ad16c1662be7f9672c0e7e6172';
-    const ROUTE_ID = '100100098'; // 서울 653번 버스의 고유 노선 ID
+    const ROUTE_ID = '100100098'; // 653번 버스 고유 ID
     
     const STATION_WORK_START = '16328'; // 강서한방병원 (상행)
     const STATION_HOME_START = '18109'; // 로옴코리아 (하행)
@@ -647,71 +649,79 @@
       </svg>
     `;
 
-    async function fetchRealTimeData() {
+      // 기존 demo 배너가 남아있다면 제거 (API 성공 후 자동 hide)
+      function hideDemoBanner() {
+        const banner = document.getElementById('demo-banner');
+        if (banner) banner.remove();
+      }
+
+    // 3. API 호출 함수 (새 구조로 교체)
+    function fetchRealTimeData() {
+      // 가이드라인 규격에 맞게 파라미터명 'ServiceKey' 대문자로 매칭
+      const url = `${API_ENDPOINT}?ServiceKey=${SERVICE_KEY}&busRouteId=${ROUTE_ID}&resultType=json`;
+      // allorigins /get 엔드포인트 → wrapper.contents 에 실제 응답이 담김
+      const proxiedUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+
       const loading = document.getElementById('loading');
       loading.classList.add('active');
-      
-      const url = `${API_ENDPOINT}?serviceKey=${encodeURIComponent(SERVICE_KEY)}&busRouteId=${ROUTE_ID}&resultType=json`;
-      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
 
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000);
-        const response = await fetch(proxyUrl, { signal: controller.signal });
-        if (!response.ok) {
-          console.error('API response error:', response.status, response.statusText);
-          throw new Error(`HTTP ${response.status}`);
-        }
-        clearTimeout(timeoutId);
-        const data = await response.json();
-        
-        let items = data.msgBody?.itemList;
-        if (!items) throw new Error("데이터 없음 또는 아직 API 권한이 동기화되지 않음");
-        if (!Array.isArray(items)) items = [items];
-        
-        let newBusData = [];
-        
-        // 상행 (강서한방병원) 데이터 추출
-        let gangseoItem = items.find(i => i.arsId && i.arsId.toString() === STATION_WORK_START.toString());
-        if (gangseoItem) {
-          if (parseInt(gangseoItem.traTime1) > 0) {
-            newBusData.push({ id: `up_${gangseoItem.vehId1 || '1'}`, timeToBoarding: parseInt(gangseoItem.traTime1), direction: 'up' });
-          }
-          if (parseInt(gangseoItem.traTime2) > 0) {
-            newBusData.push({ id: `up_${gangseoItem.vehId2 || '2'}`, timeToBoarding: parseInt(gangseoItem.traTime2), direction: 'up' });
-          }
-        }
-        
-        // 하행 (로옴코리아) 데이터 추출
-        let gasanItem = items.find(i => i.arsId && i.arsId.toString() === STATION_HOME_START.toString());
-        if (gasanItem) {
-          if (parseInt(gasanItem.traTime1) > 0) {
-            newBusData.push({ id: `down_${gasanItem.vehId1 || '1'}`, timeToBoarding: parseInt(gasanItem.traTime1), direction: 'down' });
-          }
-          if (parseInt(gasanItem.traTime2) > 0) {
-            newBusData.push({ id: `down_${gasanItem.vehId2 || '2'}`, timeToBoarding: parseInt(gasanItem.traTime2), direction: 'down' });
-          }
-        }
-        
-        // 데이터가 없을 경우를 대비해 기본 Mock 데이터를 사용합니다 (디자인 확인용)
-        if (newBusData.length === 0) {
-          newBusData = [
-            { id: 'mock_1', timeToBoarding: 150, direction: 'up' },
-            { id: 'mock_2', timeToBoarding: 600, direction: 'up' },
-            { id: 'mock_3', timeToBoarding: 300, direction: 'down' }
-          ];
-        }
+      fetch(proxiedUrl)
+        .then(response => {
+          if (!response.ok) throw new Error(`HTTP 에러! 상태코드: ${response.status}`);
+          return response.json();
+        })
+        .then(wrapper => {
+          // allorigins /get 은 실제 데이터를 wrapper.contents(문자열)로 감싸서 반환
+          const data = JSON.parse(wrapper.contents);
 
+          // 서울시 버스 API 에러 핸들링
+          if (data.msgHeader && data.msgHeader.headerCd !== '0') {
+            throw new Error(`API 에러: ${data.msgHeader.headerMsg} (코드: ${data.msgHeader.headerCd})`);
+          }
+
+          const items = data.msgBody && data.msgBody.itemList;
+          if (!items || items.length === 0) {
+            throw new Error('도착 정보 데이터가 없습니다.');
+          }
+
+          console.log('실시간 버스 데이터 로드 성공:', items);
+          hideDemoBanner();
+          updateBusLocation(items);
+        })
+        .catch(error => {
+          console.error('버스 데이터 조회 실패, 데모 모드로 유지합니다:', error);
+          showDemoBanner();
+        })
+        .finally(() => {
+          loading.classList.remove('active');
+        });
+    }
+
+    // API items 배열 → busDataList 변환 후 화면 갱신
+    function updateBusLocation(items) {
+      let newBusData = [];
+
+      // 상행 (강서한방병원)
+      let gangseoItem = items.find(i => i.arsId && i.arsId.toString() === STATION_WORK_START.toString());
+      if (gangseoItem) {
+        if (parseInt(gangseoItem.traTime1) > 0)
+          newBusData.push({ id: `up_${gangseoItem.vehId1 || '1'}`, timeToBoarding: parseInt(gangseoItem.traTime1), direction: 'up' });
+        if (parseInt(gangseoItem.traTime2) > 0)
+          newBusData.push({ id: `up_${gangseoItem.vehId2 || '2'}`, timeToBoarding: parseInt(gangseoItem.traTime2), direction: 'up' });
+      }
+
+      // 하행 (로옴코리아)
+      let gasanItem = items.find(i => i.arsId && i.arsId.toString() === STATION_HOME_START.toString());
+      if (gasanItem) {
+        if (parseInt(gasanItem.traTime1) > 0)
+          newBusData.push({ id: `down_${gasanItem.vehId1 || '1'}`, timeToBoarding: parseInt(gasanItem.traTime1), direction: 'down' });
+        if (parseInt(gasanItem.traTime2) > 0)
+          newBusData.push({ id: `down_${gasanItem.vehId2 || '2'}`, timeToBoarding: parseInt(gasanItem.traTime2), direction: 'down' });
+      }
+
+      if (newBusData.length > 0) {
         busDataList = newBusData;
         updateUI();
-        
-      } catch (err) {
-        console.error('실시간 데이터 fetch 오류:', err);
-        // alert 대신 상단 배너로 조용히 안내
-        showDemoBanner();
-        // 실제 API 실패 시 데모 모드 유지 (busDataList 초기화 안 함 → 기존 데모 버스 유지)
-      } finally {
-        loading.classList.remove('active');
       }
     }
 
